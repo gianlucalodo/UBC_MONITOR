@@ -1,0 +1,115 @@
+#!/usr/bin/perl
+
+#
+# Author: Lodo Gianluca
+#
+# The script UBC_MONITOR read User Beancounters on OpenVz 
+# and execute an external command if there is a change of failcnt value
+# in consecutive readings; this may mean that the container can have a problem. 
+# In other words the purpose of script is monitor failcnt value and
+# alert in case of change 
+#
+#
+# The script can be distributed under MIT License. 
+#
+#
+# Changes:
+#       v. 1.0 - 20160203 - First version use /usr/sbin/vzubc as input (not presente in openvz7)
+#       v. 1.1 - 20171005 - Use directly /proc/user_beancounters as input (works also with openvz7)
+#
+
+
+use POSIX;
+use Time::Local;
+
+# External command string (can be sendmail or custom script to send sms or other)
+$EXT_COMM='custom_sendmail_script';
+
+$HOSTNAME = `hostname`;
+chomp($HOSTNAME);
+$WC_HOST = map $_, $HOSTNAME =~ /(.)/gs;
+
+$WORKDIR = `dirname $0`;
+chomp($WORKDIR);
+$WORKDIR = $WORKDIR . "/";
+$LAST_STATE_FILE = $WORKDIR . "/last_state_file_$HOSTNAME";
+
+printf("UBC RESOURCE STATE on " . uc($HOSTNAME) ."\n----------------------" . "-"x$WC_HOST . "\n\n");
+
+
+@UBC = `cat /proc/user_beancounters`;
+
+open (STATEFILE, $LAST_STATE_FILE);
+foreach $stateline (<STATEFILE>){
+        ($cont, $par, $value) = split /:::/, $stateline;
+        chomp($value); 
+        $HASHUBC{$cont}{$par} = $value
+}
+close PSFILE;
+
+`> $LAST_STATE_FILE`;
+
+$CONTAINER="";
+$FAIL="";
+foreach $line(@UBC)
+{
+        chomp($line);
+        #print "$line\n";
+        #Match container number, parameter name and failcounter 
+        if ($line =~ /\s*(\d+):\s*(\w+).*\s(\d+)$/g){
+                $CONTAINER=$1;
+                $PARAM=$2;
+                $FAIL=$3;
+                chomp($CONTAINER);
+                chomp($PARAM);
+                chomp($FAIL);
+                #print "$CONTAINER - $PARAM - $FAIL\n"
+        }
+        #Match parameter name and failcounter
+        if ($line =~ /\s*(\w+).*\s(\d+)$/g){
+                $PARAM=$1;
+                $FAIL=$2;
+                chomp($PARAM);
+                chomp($FAIL);
+                #print "$PARAM - $FAIL\n"
+        }
+        if ( $FAIL != "0" ) {
+                #Case: value failcounter different more than once
+                if (exists $HASHUBC{$CONTAINER}{$PARAM}){
+                        if ( $FAIL gt $HASHUBC{$CONTAINER}{$PARAM} ) {
+                                push(@errors, "\nProblem in container: $CONTAINER , Parameter: $PARAM , Last value: $HASHUBC{$CONTAINER}{$PARAM}, current value: $FAIL !");
+                        }  
+                }
+                #Case: value failcounter different first time
+                else {
+                        $HASHUBC{$CONTAINER}{$PARAM}=0;
+                        push(@errors, "\nProblem in container: $CONTAINER , Parameter: $PARAM , Last value: $HASHUBC{$CONTAINER}{$PARAM}, current value: $FAIL !");
+
+                }
+                #print "${CONTAINER}\:\:\:$PARAM\:\:\:$FAIL\n";
+                `echo "${CONTAINER}\:\:\:${PARAM}\:\:\:${FAIL}" >> $LAST_STATE_FILE`;
+                $FAIL="";
+        }
+}
+
+if ( scalar(@errors) != 0 )
+{
+        #Change this value for object email message 
+        $obj = sprintf("Problem in container %s!!!", $HOSTNAME);
+
+        #Change this value for text email message
+        $text = "";
+
+        print "\nWarning!!! Changes on container:\n"; 
+
+        foreach (@errors)
+        {
+                $text = $text . $_; 
+                print "$_\n"; 
+        }
+        #External command invocation
+        system("${EXT_COMM}", "${obj}", "${text}");
+} else {
+        print "UBC parameter OK";
+}
+print "\n\n";
