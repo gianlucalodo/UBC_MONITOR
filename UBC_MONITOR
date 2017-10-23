@@ -51,8 +51,7 @@ close PSFILE;
 
 $CONTAINER="";
 $FAIL="";
-foreach $line(@UBC)
-{
+foreach $line(@UBC){
         chomp($line);
         #print "$line\n";
         #Match container number, parameter name and failcounter 
@@ -92,8 +91,7 @@ foreach $line(@UBC)
         }
 }
 
-if ( scalar(@errors) != 0 )
-{
+if ( scalar(@errors) != 0 ){
         #Change this value for object email message 
         $obj = sprintf("Problem in container %s!!!", $HOSTNAME);
 
@@ -102,8 +100,7 @@ if ( scalar(@errors) != 0 )
 
         print "\nWarning!!! Changes on container:\n"; 
 
-        foreach (@errors)
-        {
+        foreach (@errors){
                 $text = $text . $_; 
                 print "$_\n"; 
         }
